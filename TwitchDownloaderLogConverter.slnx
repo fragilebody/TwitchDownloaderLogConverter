@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/external/" />
+  <Folder Name="/external/TwitchDownloader/">
+    <Project Path="external/TwitchDownloader/TwitchDownloaderCore/TwitchDownloaderCore.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/TwitchDownloaderLogConverter.Core/TwitchDownloaderLogConverter.Core.csproj" />
+    <Project Path="src/TwitchDownloaderLogConverter/TwitchDownloaderLogConverter.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/TwitchDownloaderLogConverter.Tests/TwitchDownloaderLogConverter.Tests.csproj" />
+  </Folder>
+</Solution>

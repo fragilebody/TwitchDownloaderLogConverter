@@ -1,0 +1,114 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="TwitchDownloaderLogConverter.MainWindow"
+        Title="TwitchDownloader Log Converter"
+        Width="760" Height="820" MinWidth="560" MinHeight="600"
+        WindowStartupLocation="CenterScreen">
+
+    <Window.Styles>
+        <Style Selector="TextBlock.label">
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,0,12,0" />
+        </Style>
+        <Style Selector="TextBlock.hint">
+            <Setter Property="Opacity" Value="0.65" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style Selector="Border.group">
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="12" />
+        </Style>
+    </Window.Styles>
+
+    <DockPanel Margin="16">
+        <StackPanel DockPanel.Dock="Top" Spacing="12">
+            <StackPanel Spacing="2">
+                <TextBlock Text="logs.ivr.fi → TwitchDownloader chat JSON" FontSize="20" FontWeight="SemiBold" />
+                <TextBlock Classes="hint" Text="Turns logs.ivr.fi chat logs into a chat JSON that TwitchDownloader can render, update or convert, laid out like a normal VOD chat download." />
+            </StackPanel>
+
+            <TabControl x:Name="SourceTabs" Padding="0,8,0,0">
+                <TabItem Header="From VOD">
+                    <StackPanel Spacing="8">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <TextBox x:Name="VodBox" Watermark="https://www.twitch.tv/videos/1234567890 or 1234567890" />
+                            <Button x:Name="LookupButton" Grid.Column="1" Content="Look up" />
+                        </Grid>
+                        <TextBlock x:Name="VodInfoText" Classes="hint" Text="Uses the VOD's channel, start time and length, then fetches that exact range from logs.ivr.fi." />
+                    </StackPanel>
+                </TabItem>
+
+                <TabItem Header="Channel + time range">
+                    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="8">
+                        <TextBlock Classes="label" Text="Channel" />
+                        <TextBox x:Name="ChannelBox" Grid.Column="1" Watermark="forsen" />
+                        <TextBlock Classes="label" Grid.Row="1" Text="Start (UTC)" />
+                        <TextBox x:Name="RangeStartBox" Grid.Row="1" Grid.Column="1" Watermark="2026-11-10 18:00:00" />
+                        <TextBlock Classes="label" Grid.Row="2" Text="Length" />
+                        <TextBox x:Name="RangeLengthBox" Grid.Row="2" Grid.Column="1" Watermark="h:mm:ss, e.g. 5:30:00" />
+                        <TextBlock Classes="hint" Grid.Row="3" Grid.ColumnSpan="2" Text="For streams whose VOD is gone. Offset 0 in the output is the start time." />
+                    </Grid>
+                </TabItem>
+
+                <TabItem Header="Local log file">
+                    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" RowSpacing="8">
+                        <TextBlock Classes="label" Text="Log file" />
+                        <Grid Grid.Column="1" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <TextBox x:Name="InputFileBox" Watermark="A logs.ivr.fi ?json=1 or ?ndjson=1 download" />
+                            <Button x:Name="BrowseInputButton" Grid.Column="1" Content="Browse…" />
+                        </Grid>
+                        <TextBlock Classes="label" Grid.Row="1" Text="VOD (optional)" />
+                        <TextBox x:Name="FileVodBox" Grid.Row="1" Grid.Column="1" Watermark="Adds title, streamer, chapters and the VOD's start/length" />
+                        <TextBlock Classes="label" Grid.Row="2" Text="Start (UTC)" />
+                        <TextBox x:Name="FileStartBox" Grid.Row="2" Grid.Column="1" Watermark="Blank = the VOD start, or the first message" />
+                        <TextBlock Classes="label" Grid.Row="3" Text="Length" />
+                        <TextBox x:Name="FileLengthBox" Grid.Row="3" Grid.Column="1" Watermark="Blank = the VOD length, or up to the last message" />
+                        <TextBlock Classes="hint" Grid.Row="4" Grid.ColumnSpan="2" Text="Messages outside the start/length window are left out." />
+                    </Grid>
+                </TabItem>
+            </TabControl>
+
+            <Border Classes="group">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Options" FontWeight="SemiBold" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Classes="label" Text="Chat delay offset (seconds)" />
+                        <NumericUpDown x:Name="DelayBox" Value="0" Increment="0.5" FormatString="0.###" Minimum="-3600" Maximum="3600" Width="150" />
+                        <TextBlock Classes="hint" VerticalAlignment="Center" Text="Positive = chat appears later" />
+                    </StackPanel>
+                    <CheckBox x:Name="BackfillBox" IsChecked="True" Content="Fetch commenter profile info (avatar, bio, account dates) like a normal download" />
+                    <CheckBox x:Name="EmbedBox" IsChecked="False" Content="Embed images (emotes, badges, cheermotes)" />
+                    <StackPanel x:Name="ThirdPartyPanel" Orientation="Horizontal" Spacing="16" Margin="28,0,0,0" IsEnabled="False">
+                        <CheckBox x:Name="BttvBox" IsChecked="True" Content="BTTV" />
+                        <CheckBox x:Name="FfzBox" IsChecked="True" Content="FFZ" />
+                        <CheckBox x:Name="StvBox" IsChecked="True" Content="7TV" />
+                    </StackPanel>
+                    <CheckBox x:Name="GzipBox" IsChecked="False" Content="Gzip compress (.json.gz)" />
+                    <CheckBox x:Name="VerboseBox" IsChecked="False" Content="Verbose log" />
+                </StackPanel>
+            </Border>
+
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                <TextBlock Classes="label" Text="Output" />
+                <TextBox x:Name="OutputBox" Grid.Column="1" Watermark="Where to save the chat JSON" />
+                <Button x:Name="BrowseOutputButton" Grid.Column="2" Content="Browse…" />
+            </Grid>
+
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button x:Name="ConvertButton" Content="Convert" Classes="accent" MinWidth="120" HorizontalContentAlignment="Center" />
+                <Button x:Name="CancelButton" Content="Cancel" IsEnabled="False" MinWidth="90" HorizontalContentAlignment="Center" />
+            </StackPanel>
+
+            <StackPanel Spacing="4">
+                <TextBlock x:Name="StatusText" Text="Ready" />
+                <ProgressBar x:Name="ProgressBar" Minimum="0" Maximum="100" Value="0" />
+            </StackPanel>
+        </StackPanel>
+
+        <TextBox x:Name="LogBox" Margin="0,12,0,0" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
+                 FontFamily="Menlo, Consolas, monospace" FontSize="12" />
+    </DockPanel>
+</Window>

@@ -1,0 +1,136 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  APP_PROJECT: src/TwitchDownloaderLogConverter/TwitchDownloaderLogConverter.csproj
+  APP_NAME: TwitchDownloaderLogConverter
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Test
+        run: dotnet test --project tests/TwitchDownloaderLogConverter.Tests/TwitchDownloaderLogConverter.Tests.csproj -c Release
+
+  publish:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { rid: win-x64,     os: windows-latest }
+          - { rid: win-arm64,   os: windows-latest }
+          - { rid: linux-x64,   os: ubuntu-latest }
+          - { rid: linux-arm64, os: ubuntu-latest }
+          - { rid: osx-x64,     os: macos-latest }
+          - { rid: osx-arm64,   os: macos-latest }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Determine version
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          else
+            echo "VERSION=0.0.0-ci.${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Publish
+        shell: bash
+        run: >
+          dotnet publish "$APP_PROJECT"
+          -c Release
+          -r ${{ matrix.rid }}
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:EnableCompressionInSingleFile=true
+          -p:DebugType=none
+          -p:Version="$VERSION"
+          -o publish/${{ matrix.rid }}
+
+      - name: Package (Windows)
+        if: startsWith(matrix.rid, 'win')
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path "publish/${{ matrix.rid }}/*" -DestinationPath "dist/$env:APP_NAME-${{ matrix.rid }}.zip"
+
+      - name: Package (Linux)
+        if: startsWith(matrix.rid, 'linux')
+        shell: bash
+        run: |
+          mkdir -p dist
+          chmod +x "publish/${{ matrix.rid }}/$APP_NAME"
+          tar -czf "dist/$APP_NAME-${{ matrix.rid }}.tar.gz" -C "publish/${{ matrix.rid }}" .
+
+      - name: Package (macOS .app)
+        if: startsWith(matrix.rid, 'osx')
+        shell: bash
+        run: |
+          APP="dist/$APP_NAME.app"
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+          cp -R "publish/${{ matrix.rid }}/." "$APP/Contents/MacOS/"
+          chmod +x "$APP/Contents/MacOS/$APP_NAME"
+          sed -e "s/@VERSION@/${VERSION}/g" -e "s/@APP_NAME@/${APP_NAME}/g" packaging/macos/Info.plist > "$APP/Contents/Info.plist"
+          if sips -s format icns src/TwitchDownloaderLogConverter/icon.ico --out "$APP/Contents/Resources/AppIcon.icns" >/dev/null 2>&1; then
+            /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string AppIcon" "$APP/Contents/Info.plist"
+          fi
+          # Ad-hoc signature so Apple Silicon will launch it (not notarized)
+          codesign --force --deep --sign - "$APP"
+          ditto -c -k --keepParent "$APP" "dist/$APP_NAME-${{ matrix.rid }}.zip"
+          rm -rf "$APP"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-${{ matrix.rid }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -la dist
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes
