@@ -1,6 +1,9 @@
 using System.Globalization;
 using Avalonia.Controls;
+using Avalonia.Controls.Templates;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using TwitchDownloaderCore;
 using TwitchDownloaderCore.Models;
@@ -13,8 +16,11 @@ namespace TwitchDownloaderLogConverter
         private const int TAB_VOD = 0;
         private const int TAB_RANGE = 1;
         private const int TAB_FILE = 2;
+        private const int TAB_TRACKER = 3;
 
         private CancellationTokenSource? _cancellation;
+        private TwitchTrackerStream? _trackerStream;
+        private string? _autoOutputPath;
 
         public MainWindow()
         {
@@ -28,6 +34,84 @@ namespace TwitchDownloaderLogConverter
             CancelButton.Click += (_, _) => _cancellation?.Cancel();
             EmbedBox.IsCheckedChanged += (_, _) => ThirdPartyPanel.IsEnabled = EmbedBox.IsChecked == true;
             GzipBox.IsCheckedChanged += (_, _) => FixOutputExtension();
+
+            CopyBookmarkletButton.Click += CopyBookmarkletButton_Click;
+            PasteTrackerButton.Click += PasteTrackerButton_Click;
+            SegmentList.ItemTemplate = new FuncDataTemplate<StreamSegment>((segment, _) =>
+                new TextBlock { Text = segment?.ToString(), TextWrapping = TextWrapping.Wrap });
+            SegmentList.SelectionChanged += (_, _) => ApplySelectedSegments();
+        }
+
+        private async void CopyBookmarkletButton_Click(object? sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (Clipboard is null)
+                    throw new InvalidOperationException("No clipboard is available.");
+
+                await Clipboard.SetTextAsync(TwitchTrackerTimeline.Bookmarklet);
+                TrackerInfoText.Text = "Bookmarklet copied. Add a bookmark and paste it as the bookmark's URL.";
+            }
+            catch (Exception ex)
+            {
+                TrackerInfoText.Text = $"Couldn't copy the bookmarklet: {ex.Message}";
+            }
+        }
+
+        private async void PasteTrackerButton_Click(object? sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var text = Clipboard is null ? null : await Clipboard.TryGetTextAsync();
+                var stream = TwitchTrackerTimeline.Parse(text ?? "");
+                var segments = TwitchTrackerTimeline.BuildSegments(stream);
+
+                _trackerStream = stream;
+                SegmentList.ItemsSource = segments;
+                TrackerStartBox.Text = "";
+                TrackerLengthBox.Text = "";
+
+                var end = stream.End is { } streamEnd ? streamEnd.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) : "?";
+                TrackerInfoText.Text =
+                    $"{stream.ChannelLogin ?? stream.ChannelId} · {stream.Start:yyyy-MM-dd HH:mm:ss} → {end} UTC · {segments.Count} segment{(segments.Count == 1 ? "" : "s")}. Select the ones you want.";
+            }
+            catch (Exception ex)
+            {
+                TrackerInfoText.Text = ex.Message;
+            }
+        }
+
+        private void ApplySelectedSegments()
+        {
+            var selected = SegmentList.SelectedItems?.OfType<StreamSegment>().ToList() ?? [];
+            if (_trackerStream is null || selected.Count == 0)
+                return;
+
+            var (start, length) = TwitchTrackerTimeline.GetRange(selected);
+            TrackerStartBox.Text = start.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
+            TrackerLengthBox.Text = length is { } seconds ? FormatLength(seconds) : "";
+
+            // Suggest a file name, but don't replace one the user chose
+            var current = OutputBox.Text?.Trim();
+            if (string.IsNullOrEmpty(current) || current == _autoOutputPath)
+            {
+                var game = selected.OrderBy(s => s.Start).First().Game;
+                var name = $"{_trackerStream.ChannelLogin ?? _trackerStream.ChannelId}_{start:yyyy-MM-dd_HHmm}_{Slugify(game)}_logs.json";
+                OutputBox.Text = Path.Combine(GetDefaultFolder(), name);
+                FixOutputExtension();
+                _autoOutputPath = OutputBox.Text;
+            }
+        }
+
+        private static string Slugify(string? text)
+        {
+            var slug = new string((text ?? "").ToLowerInvariant().Select(c => char.IsAsciiLetterOrDigit(c) ? c : '-').ToArray());
+            while (slug.Contains("--"))
+                slug = slug.Replace("--", "-");
+            slug = slug.Trim('-');
+            if (slug.Length > 40)
+                slug = slug[..40].TrimEnd('-');
+            return slug.Length > 0 ? slug : "stream";
         }
 
         private async void LookupButton_Click(object? sender, RoutedEventArgs e)
@@ -222,6 +306,18 @@ namespace TwitchDownloaderLogConverter
                     options.VideoId = IvrLogConverter.ParseVideoId(FileVodBox.Text);
                     options.StartTime = ParseUtc(FileStartBox.Text);
                     options.Length = ParseLength(FileLengthBox.Text);
+                    break;
+                case TAB_TRACKER:
+                    if (_trackerStream is null)
+                        throw new ArgumentException("Paste stream data from TwitchTracker first.");
+                    options.Channel = _trackerStream.ChannelLogin;
+                    options.ChannelId = _trackerStream.ChannelId;
+                    options.StartTime = ParseUtc(TrackerStartBox.Text) ?? throw new ArgumentException("Select a segment or enter a start time (UTC).");
+                    options.Length = ParseLength(TrackerLengthBox.Text) ?? throw new ArgumentException("Enter a length.");
+                    var segmentAtStart = TwitchTrackerTimeline.BuildSegments(_trackerStream)
+                        .LastOrDefault(s => s.Start <= options.StartTime.Value);
+                    options.VideoTitle = segmentAtStart?.Title ?? segmentAtStart?.Game;
+                    options.VideoGame = segmentAtStart?.Game;
                     break;
             }
 

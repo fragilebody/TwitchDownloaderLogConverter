@@ -176,6 +176,8 @@ namespace TwitchDownloaderLogConverter.Core
                 string channelPath;
                 if (videoInfo?.owner?.id is { Length: > 0 } ownerId)
                     channelPath = $"channelid/{Uri.EscapeDataString(ownerId)}";
+                else if (!string.IsNullOrWhiteSpace(_options.ChannelId))
+                    channelPath = $"channelid/{Uri.EscapeDataString(_options.ChannelId.Trim())}";
                 else if (!string.IsNullOrWhiteSpace(_options.Channel))
                     channelPath = $"channel/{Uri.EscapeDataString(_options.Channel.Trim().TrimStart('#').ToLowerInvariant())}";
                 else
@@ -197,7 +199,8 @@ namespace TwitchDownloaderLogConverter.Core
                 var channelLogin = firstMessage?.channel ?? _options.Channel?.Trim().TrimStart('#').ToLowerInvariant();
                 chatRoot.streamer.login = channelLogin;
                 chatRoot.streamer.name = channelLogin;
-                chatRoot.streamer.id = int.TryParse(firstMessage?.tags["room-id"], out var roomId) ? roomId : 0;
+                chatRoot.streamer.id = int.TryParse(firstMessage?.tags["room-id"], out var roomId) ? roomId
+                    : int.TryParse(_options.ChannelId, out var optionsChannelId) ? optionsChannelId : 0;
                 if (chatRoot.streamer.id != 0)
                 {
                     try
@@ -217,8 +220,10 @@ namespace TwitchDownloaderLogConverter.Core
 
                 startTime ??= messages.Count > 0 ? ToUtc(messages.Min(m => m.timestamp)) : DateTime.UtcNow;
                 chatRoot.video.id = videoId ?? "";
-                chatRoot.video.title = $"{chatRoot.streamer.name ?? "Unknown"} chat (logs.ivr.fi)";
-                chatRoot.video.game = "Unknown";
+                chatRoot.video.title = !string.IsNullOrWhiteSpace(_options.VideoTitle)
+                    ? _options.VideoTitle.Trim()
+                    : $"{chatRoot.streamer.name ?? "Unknown"} chat (logs.ivr.fi)";
+                chatRoot.video.game = !string.IsNullOrWhiteSpace(_options.VideoGame) ? _options.VideoGame.Trim() : "Unknown";
             }
 
             chatRoot.video.created_at = startTime!.Value;

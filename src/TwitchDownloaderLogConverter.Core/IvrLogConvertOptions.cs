@@ -17,6 +17,22 @@ namespace TwitchDownloaderLogConverter.Core
         public string Channel { get; set; }
 
         /// <summary>
+        /// Twitch user id of the channel. Used instead of <see cref="Channel"/> when both are given and there is no <see cref="VideoId"/>,
+        /// so logs are still found if the channel was renamed.
+        /// </summary>
+        public string ChannelId { get; set; }
+
+        /// <summary>
+        /// Title for the output when there is no <see cref="VideoId"/>, e.g. the stream title from TwitchTracker.
+        /// </summary>
+        public string VideoTitle { get; set; }
+
+        /// <summary>
+        /// Category for the output when there is no <see cref="VideoId"/>, e.g. the segment's category from TwitchTracker.
+        /// </summary>
+        public string VideoGame { get; set; }
+
+        /// <summary>
         /// A local logs.ivr.fi JSON (<c>?json=1</c>) or NDJSON (<c>?ndjson=1</c>) file. When set, no logs are fetched.
         /// </summary>
         public string InputFile { get; set; }

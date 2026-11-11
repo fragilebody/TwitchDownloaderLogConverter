@@ -27,6 +27,7 @@ xattr -cr TwitchDownloaderLogConverter.app
 Choose a source:
 - **From VOD**: paste a VOD URL or ID. The channel, start time, length, title and chapters come from Twitch, and that exact time range is fetched from logs.ivr.fi.
 - **Channel + time range**: for VODs that no longer exist. Enter the channel, the stream start (UTC) and the length.
+- **TwitchTracker**: pick a segment (for example one game) of a past stream from its [TwitchTracker](https://twitchtracker.com/) page. See below.
 - **Local log file**: a file saved from logs.ivr.fi (`?json=1` or `?ndjson=1`, optionally gzipped). Add a VOD ID to get its metadata, or set the start and length by hand.
 
 Options:
@@ -36,6 +37,16 @@ Options:
 - Commenter profile info (avatar, bio), like a normal download.
 - Embedded emotes, badges and cheermotes (Twitch, BTTV, FFZ, 7TV).
 - Gzip compression.
+
+## Streams from TwitchTracker
+
+TwitchTracker stream pages (like `twitchtracker.com/{channel_name}/streams/{id}`) list when each category started. The app splits a stream at those points so you can grab chat for one segment, even when the VOD is gone. TwitchTracker doesn't allow scraping, so the app never downloads from it. Instead, a bookmarklet copies the timeline from the page you have open:
+
+1. On the **TwitchTracker** tab, click **Copy bookmarklet**. Add a bookmark in your browser and paste the copied text as its URL.
+2. Open the stream's page on twitchtracker.com and click the bookmark. It copies the stream data.
+3. Back in the app, click **Paste stream data** and select one or more segments. Start and length are filled in, and you can still edit them.
+
+TwitchTracker records category changes every 10 minutes, so a segment can start up to 10 minutes later than the real switch. You can adjust the start and length manually to compensate for this.
 
 ## Emote overrides
 

@@ -23,8 +23,15 @@
         </Style>
     </Window.Styles>
 
-    <DockPanel Margin="16">
-        <StackPanel DockPanel.Dock="Top" Spacing="12">
+    <Window.Resources>
+        <!-- Small enough that all source tabs fit on one row -->
+        <x:Double x:Key="TabItemHeaderFontSize">18</x:Double>
+    </Window.Resources>
+
+    <!-- Scrolls when the window is too short for the form; otherwise the log fills the leftover height -->
+    <ScrollViewer x:Name="MainScroll" HorizontalScrollBarVisibility="Disabled">
+    <DockPanel MinHeight="{Binding #MainScroll.Bounds.Height}">
+        <StackPanel DockPanel.Dock="Top" Spacing="12" Margin="16,16,16,0">
             <StackPanel Spacing="2">
                 <TextBlock Text="logs.ivr.fi → TwitchDownloader chat JSON" FontSize="20" FontWeight="SemiBold" />
                 <TextBlock Classes="hint" Text="Turns logs.ivr.fi chat logs into a chat JSON that TwitchDownloader can render, update or convert, laid out like a normal VOD chat download." />
@@ -68,6 +75,25 @@
                         <TextBox x:Name="FileLengthBox" Grid.Row="3" Grid.Column="1" Watermark="Blank = the VOD length, or up to the last message" />
                         <TextBlock Classes="hint" Grid.Row="4" Grid.ColumnSpan="2" Text="Messages outside the start/length window are left out." />
                     </Grid>
+                </TabItem>
+
+                <TabItem Header="TwitchTracker">
+                    <StackPanel Spacing="8">
+                        <TextBlock Classes="hint" Text="Pick a segment of a past stream. Copy the bookmarklet and save it as a bookmark's URL, open the stream on twitchtracker.com (e.g. twitchtracker.com/forsen/streams/…), click the bookmark, then paste here." />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button x:Name="CopyBookmarkletButton" Content="Copy bookmarklet" />
+                            <Button x:Name="PasteTrackerButton" Content="Paste stream data" />
+                        </StackPanel>
+                        <TextBlock x:Name="TrackerInfoText" Classes="hint" Text="No stream data pasted yet." />
+                        <ListBox x:Name="SegmentList" SelectionMode="Multiple,Toggle" MaxHeight="150" />
+                        <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="8">
+                            <TextBlock Classes="label" Text="Start (UTC)" />
+                            <TextBox x:Name="TrackerStartBox" Grid.Column="1" Watermark="Filled in from the selected segments" />
+                            <TextBlock Classes="label" Grid.Row="1" Text="Length" />
+                            <TextBox x:Name="TrackerLengthBox" Grid.Row="1" Grid.Column="1" Watermark="h:mm:ss" />
+                            <TextBlock Classes="hint" Grid.Row="2" Grid.ColumnSpan="2" Text="Select several segments to cover a span. TwitchTracker records category changes every 10 minutes, so edit Start or use the chat delay offset to line chat up with a re-upload." />
+                        </Grid>
+                    </StackPanel>
                 </TabItem>
             </TabControl>
 
@@ -114,7 +140,8 @@
             </StackPanel>
         </StackPanel>
 
-        <TextBox x:Name="LogBox" Margin="0,12,0,0" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
+        <TextBox x:Name="LogBox" Margin="16,12,16,16" MinHeight="120" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
                  FontFamily="Menlo, Consolas, monospace" FontSize="12" />
     </DockPanel>
+    </ScrollViewer>
 </Window>
