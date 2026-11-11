@@ -31,9 +31,27 @@ Choose a source:
 
 Options:
 - Chat delay offset, to line chat up with the video.
+- Emote overrides: your own images for removed or changed emotes (see below).
+- Twitch emotes found by name in old logs (pre-2019 imports) that have no emote data.
 - Commenter profile info (avatar, bio), like a normal download.
 - Embedded emotes, badges and cheermotes (Twitch, BTTV, FFZ, 7TV).
 - Gzip compression.
+
+## Emote overrides
+
+Old logs can mention emotes that Twitch has removed or replaced. For example, the original PogChamp (removed in 2021) now shows as today's PogChamp, and removed sub emotes or old BTTV emotes show as plain text. To control how they look, put your own images in a folder and choose it under **Emote overrides**:
+
+```
+my-emotes/
+  PogChamp.png     ← used wherever "PogChamp" appears in chat
+  gachiGASM.gif    ← animated GIFs work too
+  forsenE.webp
+```
+
+- The file name (without extension) is the emote name, case-sensitive. Supported formats: PNG, GIF, WebP and JPEG.
+- Overrides replace Twitch, BTTV, FFZ and 7TV emotes with the same name, and are embedded in the output JSON.
+- Use square images at least 28 px tall (56 or 112 px look sharpest). They're scaled to Twitch emote size.
+- When rendering, keep at least one of BTTV, FFZ or 7TV enabled in TwitchDownloader. Overrides are loaded as third-party emotes, so they're skipped if all three are turned off.
 
 ## What gets converted
 
@@ -51,7 +69,7 @@ cd TwitchDownloaderLogConverter
 dotnet run --project src/TwitchDownloaderLogConverter
 ```
 
-Requires the .NET 10 SDK. [TwitchDownloaderCore](https://github.com/lay295/TwitchDownloader) is included as a git submodule in `external/`.
+Requires the .NET 10 SDK. TwitchDownloaderCore is included as a git submodule in `external/`, from [fragilebody/TwitchDownloader](https://github.com/fragilebody/TwitchDownloader). That fork of [lay295/TwitchDownloader](https://github.com/lay295/TwitchDownloader) carries fixes this project depends on.
 
 Run the tests with:
 ```bash

@@ -1,3 +1,4 @@
 [submodule "external/TwitchDownloader"]
 	path = external/TwitchDownloader
-	url = https://github.com/lay295/TwitchDownloader.git
+	url = https://github.com/fragilebody/TwitchDownloader.git
+	branch = master

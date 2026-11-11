@@ -38,6 +38,18 @@ namespace TwitchDownloaderLogConverter.Core
         /// </summary>
         public double DelayOffsetSeconds { get; set; }
 
+        /// <summary>
+        /// Old logs (imported into logs.ivr.fi from other sources) have no emote data.
+        /// When enabled, Twitch global and channel emotes are matched by name in those messages.
+        /// </summary>
+        public bool InferLegacyEmotes { get; set; } = true;
+
+        /// <summary>
+        /// A folder of images to use as emotes. Each file's name (without extension) is the emote name, e.g. <c>PogChamp.png</c>.
+        /// They replace Twitch, BTTV, FFZ and 7TV emotes with the same name and are always embedded in the output.
+        /// </summary>
+        public string EmoteOverrideFolder { get; set; }
+
         public string OutputFile { get; set; }
         public ChatCompression Compression { get; set; } = ChatCompression.None;
         public bool BackfillCommenterInfo { get; set; } = true;

@@ -157,6 +157,63 @@ namespace TwitchDownloaderLogConverter.Tests
             Assert.Equal(1.901, comments[0].content_offset_seconds, 3);
         }
 
+        // An old message imported from another log source: no message id, no emote data
+        private const string LEGACY_JSON = """
+            {"text":"TriHard TriHard ROAD TO 7 M 😂 VoHiYo","displayName":"legacyviewer","timestamp":"2017-03-11T20:24:00Z","id":"","tags":{"badge-info":"","badges":"","display-name":"legacyviewer","emotes":"","flags":"","room-id":"20000001","tmi-sent-ts":"1489263840000","user-id":"10000004","user-type":""},"username":"legacyviewer","channel":"examplechannel","raw":"@tmi-sent-ts=1489263840000;emotes= :legacyviewer!legacyviewer@legacyviewer.tmi.twitch.tv PRIVMSG #examplechannel :TriHard TriHard ROAD TO 7 M 😂 VoHiYo","type":1}
+            """;
+
+        private static readonly Dictionary<string, string> KnownEmotes = new() { ["TriHard"] = "120232", ["VoHiYo"] = "81274", ["Kappa"] = "25" };
+
+        [Fact]
+        public void DetectsLegacyMessages()
+        {
+            Assert.True(IvrLogConverter.IsLegacyMessage(Parse(LEGACY_JSON)));
+            Assert.False(IvrLogConverter.IsLegacyMessage(Parse(PRIVMSG_JSON)));
+            Assert.False(IvrLogConverter.IsLegacyMessage(Parse(RESUB_JSON)));
+        }
+
+        [Fact]
+        public void InfersEmotesByNameInLegacyMessages()
+        {
+            var comment = IvrLogConverter.ConvertMessage(Parse(LEGACY_JSON), new DateTime(2017, 3, 11, 20, 0, 0, DateTimeKind.Utc), 0, "", KnownEmotes);
+
+            Assert.NotNull(comment);
+            Assert.Collection(comment.message.fragments,
+                f => { Assert.Equal("TriHard", f.text); Assert.Equal("120232", f.emoticon.emoticon_id); },
+                f => { Assert.Equal(" ", f.text); Assert.Null(f.emoticon); },
+                f => { Assert.Equal("TriHard", f.text); Assert.Equal("120232", f.emoticon.emoticon_id); },
+                f => { Assert.Equal(" ROAD TO 7 M 😂 ", f.text); Assert.Null(f.emoticon); },
+                f => { Assert.Equal("VoHiYo", f.text); Assert.Equal("81274", f.emoticon.emoticon_id); });
+        }
+
+        [Fact]
+        public void DropsLegacyTimeoutNotices()
+        {
+            const string NOTICE_JSON = """
+                {"text":"legacyviewer was timed out for 10s: Message too long","displayName":"Twitch","timestamp":"2017-03-11T20:24:15Z","id":"","tags":{"badges":"","display-name":"Twitch","emotes":"","room-id":"20000001","user-id":"12826"},"username":"twitch","channel":"examplechannel","raw":"","type":1}
+                """;
+
+            Assert.Null(IvrLogConverter.ConvertMessage(Parse(NOTICE_JSON), new DateTime(2017, 3, 11, 20, 0, 0, DateTimeKind.Utc), 0, "", KnownEmotes));
+        }
+
+        [Fact]
+        public void DoesNotInferEmotesInModernMessages()
+        {
+            // A modern message with an empty emotes tag really had no Twitch emotes (e.g. a non-subscriber typing a sub emote name)
+            var comment = IvrLogConverter.ConvertMessage(Parse(PRIVMSG_JSON), VideoStart, 0, "", new Dictionary<string, string> { ["<daily"] = "1" });
+
+            Assert.NotNull(comment);
+            Assert.Null(Assert.Single(comment.message.fragments).emoticon);
+        }
+
+        [Fact]
+        public void InferEmotesTagUsesCodePointsAndExactWords()
+        {
+            // 😂 is one code point, so VoHiYo starts at 2. "Kappa123" and "kappa" are not emotes.
+            Assert.Equal("81274:2-7/25:9-13,24-28", IvrLogConverter.InferEmotesTag("😂 VoHiYo Kappa Kappa123 Kappa kappa", KnownEmotes));
+            Assert.Equal("", IvrLogConverter.InferEmotesTag("no emotes here", KnownEmotes));
+        }
+
         [Fact]
         public void ParsesNdjson()
         {

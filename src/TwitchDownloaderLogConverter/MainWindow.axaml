@@ -80,6 +80,12 @@
                         <TextBlock Classes="hint" VerticalAlignment="Center" Text="Positive = chat appears later" />
                     </StackPanel>
                     <CheckBox x:Name="BackfillBox" IsChecked="True" Content="Fetch commenter profile info (avatar, bio, account dates) like a normal download" />
+                    <CheckBox x:Name="LegacyEmotesBox" IsChecked="True" Content="Find Twitch emotes by name in old logs that have no emote data" />
+                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                        <TextBlock Classes="label" Text="Emote overrides" />
+                        <TextBox x:Name="OverrideFolderBox" Grid.Column="1" Watermark="Optional folder of images, e.g. PogChamp.png replaces PogChamp" />
+                        <Button x:Name="BrowseOverrideButton" Grid.Column="2" Content="Browse…" />
+                    </Grid>
                     <CheckBox x:Name="EmbedBox" IsChecked="False" Content="Embed images (emotes, badges, cheermotes)" />
                     <StackPanel x:Name="ThirdPartyPanel" Orientation="Horizontal" Spacing="16" Margin="28,0,0,0" IsEnabled="False">
                         <CheckBox x:Name="BttvBox" IsChecked="True" Content="BTTV" />

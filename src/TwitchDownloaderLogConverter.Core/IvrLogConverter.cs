@@ -25,6 +25,9 @@ namespace TwitchDownloaderLogConverter.Core
     {
         public const string LOGS_BASE_URL = "https://logs.ivr.fi";
 
+        /// <summary>The user id of the "twitch" account</summary>
+        private const string TWITCH_SYSTEM_USER_ID = "12826";
+
         private static readonly TimeSpan FetchChunkLength = TimeSpan.FromHours(1);
 
         private static readonly HttpClient HttpClient = CreateHttpClient();
@@ -68,11 +71,24 @@ namespace TwitchDownloaderLogConverter.Core
             if (chatRoot.comments.Count == 0)
                 _progress.LogWarning("No chat messages fell inside the selected time range. The output will have no comments.");
 
+            // Load overrides first so replaced Twitch emotes aren't downloaded for nothing
+            List<EmbedEmoteData> emoteOverrides = null;
+            if (!string.IsNullOrWhiteSpace(_options.EmoteOverrideFolder))
+            {
+                _progress.SetStatus("Loading emote overrides");
+                emoteOverrides = EmoteOverrides.LoadFolder(_options.EmoteOverrideFolder, _progress);
+                var replaced = EmoteOverrides.ApplyToComments(chatRoot.comments, emoteOverrides.Select(o => o.name).ToHashSet(StringComparer.Ordinal));
+                _progress.LogInfo($"Loaded {emoteOverrides.Count} emote override(s): {string.Join(", ", emoteOverrides.Select(o => o.name))}. Replaced {replaced:N0} Twitch emote use(s).");
+            }
+
             if (_options.BackfillCommenterInfo && chatRoot.comments.Count > 0)
                 await ChatEnrichment.BackfillCommenterInfoAsync(chatRoot, _progress);
 
             if (_options.EmbedData)
                 await ChatEnrichment.EmbedImagesAsync(chatRoot, _options.BttvEmotes, _options.FfzEmotes, _options.StvEmotes, _cacheDir, _progress, cancellationToken);
+
+            if (emoteOverrides is { Count: > 0 })
+                EmoteOverrides.Embed(chatRoot, emoteOverrides);
 
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -207,8 +223,17 @@ namespace TwitchDownloaderLogConverter.Core
 
             chatRoot.video.created_at = startTime!.Value;
 
+            // Old logs imported from other sources have no emote positions, so find Twitch emotes by name instead
+            IReadOnlyDictionary<string, string> legacyEmotes = null;
+            if (_options.InferLegacyEmotes && messages.Any(IsLegacyMessage))
+            {
+                _progress.SetStatus("Fetching Twitch emotes for old logs");
+                legacyEmotes = await TwitchEmoteLookup.GetEmoteIdsByNameAsync(chatRoot.streamer.id, chatRoot.streamer.login, _progress, cancellationToken);
+                _progress.LogInfo($"Some messages come from old logs without emote data. Matching Twitch emotes by name ({legacyEmotes.Count} global and channel emotes).");
+            }
+
             _progress.SetStatus("Converting messages");
-            chatRoot.comments = ConvertMessages(messages, startTime.Value, length, _options.DelayOffsetSeconds, videoId ?? "");
+            chatRoot.comments = ConvertMessages(messages, startTime.Value, length, _options.DelayOffsetSeconds, videoId ?? "", legacyEmotes);
 
             length ??= chatRoot.comments.LastOrDefault()?.content_offset_seconds ?? 0;
             chatRoot.video.start = 0;
@@ -382,7 +407,9 @@ namespace TwitchDownloaderLogConverter.Core
         /// <param name="length">Comments past this offset are dropped. <see langword="null"/> keeps everything after <paramref name="videoStart"/>.</param>
         /// <param name="delayOffset">Seconds added to every offset</param>
         /// <param name="contentId">The VOD id, or an empty string</param>
-        public static List<Comment> ConvertMessages(IEnumerable<IvrLogMessage> messages, DateTime videoStart, double? length, double delayOffset, string contentId)
+        /// <param name="legacyEmotes">Twitch emote ids by name, used to find emotes in old messages that have no emote data</param>
+        public static List<Comment> ConvertMessages(IEnumerable<IvrLogMessage> messages, DateTime videoStart, double? length, double delayOffset, string contentId,
+            IReadOnlyDictionary<string, string> legacyEmotes = null)
         {
             videoStart = ToUtc(videoStart);
             var seenIds = new HashSet<string>();
@@ -390,7 +417,7 @@ namespace TwitchDownloaderLogConverter.Core
 
             foreach (var message in messages)
             {
-                var comment = ConvertMessage(message, videoStart, delayOffset, contentId);
+                var comment = ConvertMessage(message, videoStart, delayOffset, contentId, legacyEmotes);
                 if (comment is null)
                     continue;
 
@@ -408,7 +435,8 @@ namespace TwitchDownloaderLogConverter.Core
         }
 
         /// <returns>The converted comment, or <see langword="null"/> if the message is not something Twitch keeps in VOD chat.</returns>
-        public static Comment ConvertMessage(IvrLogMessage message, DateTime videoStart, double delayOffset, string contentId)
+        public static Comment ConvertMessage(IvrLogMessage message, DateTime videoStart, double delayOffset, string contentId,
+            IReadOnlyDictionary<string, string> legacyEmotes = null)
         {
             if (message?.tags is null)
                 return null;
@@ -416,6 +444,10 @@ namespace TwitchDownloaderLogConverter.Core
             var tags = message.tags;
             var userId = GetTag(tags, "user-id");
             if (string.IsNullOrEmpty(userId))
+                return null;
+
+            // Old imported logs record timeouts/bans as chat messages from the "twitch" account. VOD chat has no such messages.
+            if (userId == TWITCH_SYSTEM_USER_ID && IsLegacyMessage(message))
                 return null;
 
             string systemText = null;
@@ -455,7 +487,11 @@ namespace TwitchDownloaderLogConverter.Core
             if (string.IsNullOrEmpty(displayName))
                 displayName = string.IsNullOrWhiteSpace(message.displayName) ? login : message.displayName.Trim();
 
-            var (fragments, emoticons) = BuildFragments(prefix, userText, GetTag(tags, "emotes"));
+            var emotesTag = GetTag(tags, "emotes");
+            if (string.IsNullOrEmpty(emotesTag) && legacyEmotes is { Count: > 0 } && IsLegacyMessage(message))
+                emotesTag = InferEmotesTag(userText, legacyEmotes);
+
+            var (fragments, emoticons) = BuildFragments(prefix, userText, emotesTag);
 
             var newMessage = new Message
             {
@@ -570,6 +606,61 @@ namespace TwitchDownloaderLogConverter.Core
 
             result.Sort((a, b) => a.Item2.CompareTo(b.Item2));
             return result;
+        }
+
+        /// <summary>
+        /// Messages imported into logs.ivr.fi from older logging sources have no message id and no emote positions.
+        /// Every message Twitch sends today has an <c>id</c> tag.
+        /// </summary>
+        public static bool IsLegacyMessage(IvrLogMessage message)
+            => message is not null
+               && string.IsNullOrEmpty(message.id)
+               && (message.tags is null || !message.tags.ContainsKey("id"))
+               && (IvrLogMessageType)message.type is IvrLogMessageType.PrivMsg or IvrLogMessageType.UserNotice;
+
+        /// <summary>
+        /// Builds an IRC <c>emotes</c> tag by matching space separated words against known Twitch emote names, the same way Twitch chat matches them.
+        /// </summary>
+        /// <returns>The tag (<c>id:start-end,start-end/id2:...</c>, code point indices), or an empty string if nothing matched</returns>
+        public static string InferEmotesTag(string text, IReadOnlyDictionary<string, string> emoteIdsByName)
+        {
+            if (string.IsNullOrEmpty(text) || emoteIdsByName is not { Count: > 0 })
+                return "";
+
+            var ranges = new Dictionary<string, List<string>>();
+            var order = new List<string>();
+            var codePoint = 0;
+            var wordStartCodePoint = 0;
+            var wordStart = 0;
+
+            for (var i = 0; i <= text.Length; i++)
+            {
+                if (i == text.Length || text[i] == ' ')
+                {
+                    if (i > wordStart && emoteIdsByName.TryGetValue(text[wordStart..i], out var id))
+                    {
+                        if (!ranges.TryGetValue(id, out var list))
+                        {
+                            ranges[id] = list = new List<string>();
+                            order.Add(id);
+                        }
+
+                        list.Add($"{wordStartCodePoint}-{codePoint - 1}");
+                    }
+
+                    wordStart = i + 1;
+                    wordStartCodePoint = codePoint + 1;
+                    codePoint++;
+                    continue;
+                }
+
+                if (char.IsHighSurrogate(text[i]) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1]))
+                    i++;
+
+                codePoint++;
+            }
+
+            return string.Join('/', order.Select(id => $"{id}:{string.Join(',', ranges[id])}"));
         }
 
         public static List<UserBadge> ParseBadges(string badgesTag)

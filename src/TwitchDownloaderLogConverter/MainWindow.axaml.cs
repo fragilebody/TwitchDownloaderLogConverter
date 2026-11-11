@@ -23,6 +23,7 @@ namespace TwitchDownloaderLogConverter
             LookupButton.Click += LookupButton_Click;
             BrowseInputButton.Click += BrowseInputButton_Click;
             BrowseOutputButton.Click += BrowseOutputButton_Click;
+            BrowseOverrideButton.Click += BrowseOverrideButton_Click;
             ConvertButton.Click += ConvertButton_Click;
             CancelButton.Click += (_, _) => _cancellation?.Cancel();
             EmbedBox.IsCheckedChanged += (_, _) => ThirdPartyPanel.IsEnabled = EmbedBox.IsChecked == true;
@@ -92,6 +93,18 @@ namespace TwitchDownloaderLogConverter
                 OutputBox.Text = Path.Combine(Path.GetDirectoryName(path) ?? GetDefaultFolder(), $"{name}_twitchdownloader.json");
                 FixOutputExtension();
             }
+        }
+
+        private async void BrowseOverrideButton_Click(object? sender, RoutedEventArgs e)
+        {
+            var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+            {
+                Title = "Choose a folder of emote images (file name = emote name)",
+                AllowMultiple = false
+            });
+
+            if (folders.FirstOrDefault()?.TryGetLocalPath() is { } path)
+                OverrideFolderBox.Text = path;
         }
 
         private async void BrowseOutputButton_Click(object? sender, RoutedEventArgs e)
@@ -181,6 +194,8 @@ namespace TwitchDownloaderLogConverter
             {
                 DelayOffsetSeconds = (double)(DelayBox.Value ?? 0),
                 BackfillCommenterInfo = BackfillBox.IsChecked == true,
+                InferLegacyEmotes = LegacyEmotesBox.IsChecked == true,
+                EmoteOverrideFolder = string.IsNullOrWhiteSpace(OverrideFolderBox.Text) ? null : OverrideFolderBox.Text.Trim(),
                 EmbedData = EmbedBox.IsChecked == true,
                 BttvEmotes = BttvBox.IsChecked == true,
                 FfzEmotes = FfzBox.IsChecked == true,
@@ -210,6 +225,9 @@ namespace TwitchDownloaderLogConverter
                     break;
             }
 
+            if (options.EmoteOverrideFolder is not null && !Directory.Exists(options.EmoteOverrideFolder))
+                throw new ArgumentException("The emote override folder doesn't exist.");
+
             if (string.IsNullOrWhiteSpace(OutputBox.Text))
                 throw new ArgumentException("Choose an output file.");
 
@@ -225,6 +243,7 @@ namespace TwitchDownloaderLogConverter
             SourceTabs.IsEnabled = !busy;
             LookupButton.IsEnabled = !busy;
             BrowseOutputButton.IsEnabled = !busy;
+            BrowseOverrideButton.IsEnabled = !busy;
             OutputBox.IsEnabled = !busy;
         }
 
